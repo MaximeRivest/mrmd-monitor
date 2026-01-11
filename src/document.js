@@ -45,25 +45,9 @@ export class DocumentWriter {
 
     const contentStart = newlineAfterMarker + 1;
 
-    // Find the closing ``` (must be on its own line)
-    // Look for \n``` pattern
-    let searchPos = contentStart;
-    let closingPos = -1;
-
-    while (searchPos < text.length) {
-      const nextBackticks = text.indexOf('```', searchPos);
-      if (nextBackticks === -1) break;
-
-      // Check if this is at start of line (preceded by newline)
-      if (nextBackticks === 0 || text[nextBackticks - 1] === '\n') {
-        closingPos = nextBackticks;
-        break;
-      }
-
-      searchPos = nextBackticks + 3;
-    }
-
-    // contentEnd is where we insert new content (just before closing ```)
+    // Find the closing ``` - it's the first ``` after contentStart
+    // Output blocks don't contain nested code, so this is safe
+    const closingPos = text.indexOf('```', contentStart);
     const contentEnd = closingPos === -1 ? text.length : closingPos;
 
     return {
@@ -106,14 +90,23 @@ export class DocumentWriter {
       return false;
     }
 
-    // Delete existing content
-    const existingLength = block.contentEnd - block.contentStart;
-    if (existingLength > 0) {
-      this.ytext.delete(block.contentStart, existingLength);
-    }
+    // Ensure content ends with newline so closing ``` stays on its own line
+    const normalizedContent = content && !content.endsWith('\n') ? content + '\n' : content;
 
-    // Insert new content
-    this.ytext.insert(block.contentStart, content);
+    // Use transaction for atomic delete+insert
+    this.ydoc.transact(() => {
+      // Delete existing content
+      const existingLength = block.contentEnd - block.contentStart;
+      if (existingLength > 0) {
+        this.ytext.delete(block.contentStart, existingLength);
+      }
+
+      // Insert new content
+      if (normalizedContent) {
+        this.ytext.insert(block.contentStart, normalizedContent);
+      }
+    });
+
     return true;
   }
 

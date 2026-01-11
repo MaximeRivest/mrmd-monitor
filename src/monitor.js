@@ -12,6 +12,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { CoordinationProtocol, EXECUTION_STATUS } from './coordination.js';
 import { DocumentWriter } from './document.js';
 import { ExecutionHandler } from './execution.js';
+import { TerminalBuffer } from './terminal.js';
 
 /**
  * @typedef {Object} MonitorOptions
@@ -124,8 +125,9 @@ export class RuntimeMonitor {
       });
 
       // Wait for sync
-      this.provider.on('synced', ({ synced }) => {
-        if (synced && !this._synced) {
+      // Note: y-websocket 2.x uses 'sync' event with boolean parameter
+      this.provider.on('sync', (isSynced) => {
+        if (isSynced && !this._synced) {
           this._synced = true;
           this._log('info', 'Document synced');
 
@@ -227,43 +229,66 @@ export class RuntimeMonitor {
     // Don't start twice
     if (this.executor.isActive(execId)) return;
 
+    // Wait for output block to be synced to our ydoc
+    // The browser created the output block, but Yjs sync may not have propagated it yet
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds max
+    while (!this.writer.hasOutputBlock(execId) && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+
+    if (!this.writer.hasOutputBlock(execId)) {
+      this._log('error', 'Output block not synced after timeout', { execId, attempts });
+      this.coordination.setError(execId, {
+        type: 'SyncError',
+        message: 'Output block not synced to monitor. Try again.',
+      });
+      this._processingExecutions.delete(execId);
+      return;
+    }
+
+    if (attempts > 0) {
+      this._log('debug', 'Waited for output block sync', { execId, attempts, ms: attempts * 100 });
+    }
+
     this._log('info', 'Starting execution', { execId, language: exec.language });
 
     // Mark as running
     this.coordination.setRunning(execId);
 
     try {
-      // Track accumulated output for writing to Y.Text
-      let lastWrittenLength = 0;
+      // Use TerminalBuffer to process output (handles \r, ANSI, progress bars)
+      const buffer = new TerminalBuffer();
 
       await this.executor.execute(exec.runtimeUrl, exec.code, {
         session: exec.session,
         execId,
         callbacks: {
           onStdout: (chunk, accumulated) => {
-            // Write new content to Y.Text
-            const newContent = accumulated.slice(lastWrittenLength);
-            if (newContent) {
-              this.writer.appendOutput(execId, newContent);
-              lastWrittenLength = accumulated.length;
-            }
+            // Process through terminal buffer for proper cursor/ANSI handling
+            buffer.write(chunk);
+            // Write processed output to document
+            this.writer.replaceOutput(execId, buffer.toString());
           },
 
           onStderr: (chunk, accumulated) => {
-            // Write stderr to Y.Text (could prefix with marker)
-            const newContent = accumulated.slice(lastWrittenLength);
-            if (newContent) {
-              this.writer.appendOutput(execId, newContent);
-              lastWrittenLength = accumulated.length;
-            }
+            // Process stderr through buffer too
+            buffer.write(chunk);
+            this.writer.replaceOutput(execId, buffer.toString());
           },
 
           onStdinRequest: (request) => {
-            this._log('info', 'Stdin request', { execId, prompt: request.prompt });
+            this._log('info', 'Stdin request received from runtime', {
+              execId,
+              prompt: request.prompt,
+              password: request.password
+            });
             this.coordination.requestStdin(execId, {
               prompt: request.prompt,
               password: request.password,
             });
+            this._log('info', 'Stdin request stored in Y.Map', { execId });
           },
 
           onDisplay: (display) => {
@@ -307,15 +332,20 @@ export class RuntimeMonitor {
   async _handleStdinResponse(execId, exec) {
     if (!exec.stdinResponse) return;
 
-    this._log('debug', 'Stdin response received', { execId });
+    this._log('info', 'Stdin response received, sending to runtime', {
+      execId,
+      text: exec.stdinResponse.text
+    });
 
     try {
-      await this.executor.sendInput(
+      const result = await this.executor.sendInput(
         exec.runtimeUrl,
         exec.session,
         execId,
         exec.stdinResponse.text
       );
+
+      this._log('info', 'Stdin sent to runtime', { execId, result });
 
       // Clear the request
       this.coordination.clearStdinRequest(execId);

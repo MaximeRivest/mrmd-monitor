@@ -11,3 +11,4 @@ export { RuntimeMonitor, createMonitor } from './monitor.js';
 export { ExecutionHandler } from './execution.js';
 export { DocumentWriter } from './document.js';
 export { CoordinationProtocol, EXECUTION_STATUS } from './coordination.js';
+export { TerminalBuffer, processTerminalOutput } from './terminal.js';

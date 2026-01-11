@@ -59,6 +59,7 @@ export class ExecutionHandler {
           code,
           session,
           storeHistory: true,
+          execId, // Pass execId so mrmd-python uses the same ID for stdin coordination
         }),
         signal: abortController.signal,
       });
