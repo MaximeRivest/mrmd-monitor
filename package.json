@@ -1,0 +1,32 @@
+{
+  "name": "mrmd-monitor",
+  "version": "0.1.0",
+  "description": "Headless Yjs peer for monitoring and executing code in mrmd notebooks",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "mrmd-monitor": "./bin/cli.js"
+  },
+  "scripts": {
+    "start": "node bin/cli.js",
+    "dev": "node --watch bin/cli.js"
+  },
+  "keywords": [
+    "mrmd",
+    "yjs",
+    "collaborative",
+    "notebook",
+    "execution",
+    "monitor"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "yjs": "^13.6.0",
+    "y-websocket": "^2.0.0",
+    "lib0": "^0.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
