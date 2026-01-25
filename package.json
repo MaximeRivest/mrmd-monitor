@@ -1,6 +1,6 @@
 {
   "name": "mrmd-monitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Headless Yjs peer for monitoring and executing code in mrmd notebooks",
   "type": "module",
   "main": "src/index.js",
