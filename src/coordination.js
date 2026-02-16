@@ -35,7 +35,6 @@ export const EXECUTION_STATUS = {
  * @property {string} code - Code to execute
  * @property {string} language - Language identifier
  * @property {string} runtimeUrl - MRP runtime URL
- * @property {string} [session] - MRP session ID
  * @property {string} status - Current status
  * @property {number} requestedBy - Client ID that requested
  * @property {number} requestedAt - Timestamp
@@ -89,11 +88,10 @@ export class CoordinationProtocol {
    * @param {string} options.code
    * @param {string} options.language
    * @param {string} options.runtimeUrl
-   * @param {string} [options.session]
    * @param {string} [options.cellId]
    * @returns {string} execId
    */
-  requestExecution({ code, language, runtimeUrl, session = 'default', cellId }) {
+  requestExecution({ code, language, runtimeUrl, cellId }) {
     const execId = CoordinationProtocol.generateExecId();
 
     this.executions.set(execId, {
@@ -102,7 +100,6 @@ export class CoordinationProtocol {
       code,
       language,
       runtimeUrl,
-      session,
       status: EXECUTION_STATUS.REQUESTED,
       requestedBy: this.clientId,
       requestedAt: Date.now(),

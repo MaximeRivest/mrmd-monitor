@@ -33,14 +33,12 @@ export class ExecutionHandler {
    * @param {string} runtimeUrl - MRP runtime base URL
    * @param {string} code - Code to execute
    * @param {Object} options
-   * @param {string} [options.session='default'] - Session ID
    * @param {string} [options.execId] - Execution ID for tracking
    * @param {ExecutionCallbacks} [options.callbacks] - Event callbacks
    * @returns {Promise<Object>} Final result
    */
   async execute(runtimeUrl, code, options = {}) {
     const {
-      session = 'default',
       execId,
       callbacks = {},
     } = options;
@@ -57,9 +55,8 @@ export class ExecutionHandler {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code,
-          session,
           storeHistory: true,
-          execId, // Pass execId so mrmd-python uses the same ID for stdin coordination
+          execId, // Pass execId so runtimes use the same ID for stdin coordination
         }),
         signal: abortController.signal,
       });
@@ -182,17 +179,15 @@ export class ExecutionHandler {
    * Send input to a waiting execution
    *
    * @param {string} runtimeUrl - MRP runtime base URL
-   * @param {string} session - Session ID
    * @param {string} execId - Execution ID
    * @param {string} text - Input text
    * @returns {Promise<{accepted: boolean}>}
    */
-  async sendInput(runtimeUrl, session, execId, text) {
+  async sendInput(runtimeUrl, execId, text) {
     const response = await fetch(`${runtimeUrl}/input`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        session,
         exec_id: execId,
         text,
       }),
@@ -205,14 +200,13 @@ export class ExecutionHandler {
    * Interrupt a running execution
    *
    * @param {string} runtimeUrl - MRP runtime base URL
-   * @param {string} session - Session ID
    * @returns {Promise<{interrupted: boolean}>}
    */
-  async interrupt(runtimeUrl, session) {
+  async interrupt(runtimeUrl) {
     const response = await fetch(`${runtimeUrl}/interrupt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session }),
+      body: JSON.stringify({}),
     });
 
     return response.json();

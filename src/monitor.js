@@ -262,7 +262,6 @@ export class RuntimeMonitor {
       const buffer = new TerminalBuffer();
 
       await this.executor.execute(exec.runtimeUrl, exec.code, {
-        session: exec.session,
         execId,
         callbacks: {
           onStdout: (chunk, accumulated) => {
@@ -340,7 +339,6 @@ export class RuntimeMonitor {
     try {
       const result = await this.executor.sendInput(
         exec.runtimeUrl,
-        exec.session,
         execId,
         exec.stdinResponse.text
       );
