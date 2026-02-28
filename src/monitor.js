@@ -19,6 +19,7 @@ import { TerminalBuffer } from './terminal.js';
  * @property {string} [name='mrmd-monitor'] - Monitor name for Awareness
  * @property {string} [color='#10b981'] - Monitor color for Awareness
  * @property {Function} [log] - Logger function
+ * @property {number} [outputFlushMs=100] - Throttle interval for Yjs output writes
  */
 
 /**
@@ -44,6 +45,7 @@ export class RuntimeMonitor {
       name: 'mrmd-monitor',
       color: '#10b981',
       log: console.log,
+      outputFlushMs: 100,
       ...options,
     };
 
@@ -159,6 +161,12 @@ export class RuntimeMonitor {
     this._unsubscribe = this.coordination.observe((execId, exec, action) => {
       if (!exec) return;
 
+      // Handle cancellations
+      if (exec.status === EXECUTION_STATUS.CANCELLED && exec.claimedBy === this.ydoc.clientID) {
+        this._handleCancellation(execId, exec);
+        return;
+      }
+
       // Handle new requests
       if (exec.status === EXECUTION_STATUS.REQUESTED) {
         this._handleRequest(execId, exec);
@@ -198,6 +206,20 @@ export class RuntimeMonitor {
   }
 
   /**
+   * Handle cancellation
+   *
+   * @param {string} execId
+   * @param {Object} exec
+   */
+  _handleCancellation(execId, exec) {
+    if (!this._processingExecutions.has(execId)) return;
+
+    this._log('info', 'Execution cancelled by user', { execId });
+    this.executor.cancel(execId);
+    this._processingExecutions.delete(execId);
+  }
+
+  /**
    * Handle execution request
    *
    * @param {string} execId
@@ -234,6 +256,14 @@ export class RuntimeMonitor {
     let attempts = 0;
     const maxAttempts = 50; // 5 seconds max
     while (!this.writer.hasOutputBlock(execId) && attempts < maxAttempts) {
+      // Re-fetch execution to ensure it hasn't been cancelled while we're waiting
+      const currentExec = this.coordination.executions.get(execId);
+      if (currentExec && currentExec.status === EXECUTION_STATUS.CANCELLED) {
+        this._log('info', 'Execution cancelled while waiting for output block sync', { execId });
+        this._processingExecutions.delete(execId);
+        return;
+      }
+      
       await new Promise(resolve => setTimeout(resolve, 100));
       attempts++;
     }
@@ -261,23 +291,53 @@ export class RuntimeMonitor {
       // Use TerminalBuffer to process output (handles \r, ANSI, progress bars)
       const buffer = new TerminalBuffer();
 
+      // Throttle Yjs writes to avoid CRDT churn on high-frequency output
+      const outputFlushMs = Number.isFinite(this.options.outputFlushMs)
+        ? Math.max(0, this.options.outputFlushMs)
+        : 100;
+      let latestOutput = '';
+      let flushTimer = null;
+
+      const flushOutputNow = () => {
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        this.writer.replaceOutput(execId, latestOutput);
+      };
+
+      const scheduleFlush = () => {
+        if (outputFlushMs === 0) {
+          flushOutputNow();
+          return;
+        }
+        if (flushTimer) return;
+        flushTimer = setTimeout(() => {
+          flushTimer = null;
+          this.writer.replaceOutput(execId, latestOutput);
+        }, outputFlushMs);
+      };
+
       await this.executor.execute(exec.runtimeUrl, exec.code, {
         execId,
         callbacks: {
           onStdout: (chunk, accumulated) => {
             // Process through terminal buffer for proper cursor/ANSI handling
             buffer.write(chunk);
-            // Write processed output to document
-            this.writer.replaceOutput(execId, buffer.toString());
+            latestOutput = buffer.toString();
+            scheduleFlush();
           },
 
           onStderr: (chunk, accumulated) => {
             // Process stderr through buffer too
             buffer.write(chunk);
-            this.writer.replaceOutput(execId, buffer.toString());
+            latestOutput = buffer.toString();
+            scheduleFlush();
           },
 
           onStdinRequest: (request) => {
+            // Ensure prompt/output is visible immediately before asking for input
+            flushOutputNow();
             this._log('info', 'Stdin request received from runtime', {
               execId,
               prompt: request.prompt,
@@ -296,6 +356,7 @@ export class RuntimeMonitor {
           },
 
           onResult: (result) => {
+            flushOutputNow();
             this._log('info', 'Execution completed', { execId, success: result.success });
             this.coordination.setCompleted(execId, {
               result: result.result,
@@ -304,11 +365,16 @@ export class RuntimeMonitor {
           },
 
           onError: (error) => {
+            flushOutputNow();
             this._log('error', 'Execution error', { execId, error: error.message });
             this.coordination.setError(execId, error);
           },
         },
       });
+
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+      }
 
     } catch (err) {
       this._log('error', 'Execution failed', { execId, error: err.message });
