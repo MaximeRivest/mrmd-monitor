@@ -13,6 +13,7 @@ import { CoordinationProtocol, EXECUTION_STATUS } from './coordination.js';
 import { DocumentWriter } from './document.js';
 import { ExecutionHandler } from './execution.js';
 import { TerminalBuffer } from './terminal.js';
+import { createTableJobsBridge } from './tables/index.js';
 
 /**
  * @typedef {Object} MonitorOptions
@@ -20,6 +21,11 @@ import { TerminalBuffer } from './terminal.js';
  * @property {string} [color='#10b981'] - Monitor color for Awareness
  * @property {Function} [log] - Logger function
  * @property {number} [outputFlushMs=100] - Throttle interval for Yjs output writes
+ * @property {boolean} [enableTableJobs=true] - Whether to run the linked-table bridge
+ * @property {string} [projectRoot] - Project root used for linked-table asset paths
+ * @property {string} [cwd] - Working directory for linked-table subprocesses
+ * @property {object} [fs] - Optional filesystem adapter for linked-table jobs
+ * @property {Function} [exec] - Optional materialization executor override for linked-table jobs
  */
 
 /**
@@ -46,6 +52,7 @@ export class RuntimeMonitor {
       color: '#10b981',
       log: console.log,
       outputFlushMs: 100,
+      enableTableJobs: true,
       ...options,
     };
 
@@ -63,6 +70,9 @@ export class RuntimeMonitor {
 
     /** @type {ExecutionHandler} */
     this.executor = new ExecutionHandler();
+
+    /** @type {import('./tables/index.js').TableJobsBridge|null} */
+    this.tableJobsBridge = null;
 
     /** @type {boolean} */
     this._connected = false;
@@ -137,6 +147,9 @@ export class RuntimeMonitor {
           this.coordination = new CoordinationProtocol(this.ydoc, this.ydoc.clientID);
           this.writer = new DocumentWriter(this.ydoc);
 
+          // Start linked-table bridge before watchers begin consuming jobs
+          this._startTableJobsBridge();
+
           // Start watching for execution requests
           this._startWatching();
 
@@ -149,6 +162,36 @@ export class RuntimeMonitor {
         this._log('error', 'Connection error', { error: err.message });
         reject(err);
       });
+    });
+  }
+
+  /**
+   * Start the linked-table `tableJobs` bridge.
+   */
+  _startTableJobsBridge() {
+    if (this.tableJobsBridge || this.options.enableTableJobs === false) {
+      return;
+    }
+
+    this._log('info', 'Starting linked-table bridge', {
+      projectRoot: this.options.projectRoot || null,
+    });
+
+    this.tableJobsBridge = createTableJobsBridge({
+      ydoc: this.ydoc,
+      clientId: this.ydoc.clientID,
+      textName: 'content',
+      projectRoot: this.options.projectRoot,
+      documentPath: this.docPath,
+      cwd: this.options.cwd,
+      fs: this.options.fs,
+      exec: this.options.exec,
+      logger: {
+        debug: (message, data = {}) => this._log('debug', String(message), data),
+        info: (message, data = {}) => this._log('info', String(message), data),
+        warn: (message, data = {}) => this._log('warn', String(message), data),
+        error: (message, data = {}) => this._log('error', String(message), data),
+      },
     });
   }
 
@@ -438,6 +481,11 @@ export class RuntimeMonitor {
     if (this.coordination) {
       this.coordination.destroy();
       this.coordination = null;
+    }
+
+    if (this.tableJobsBridge) {
+      this.tableJobsBridge.destroy();
+      this.tableJobsBridge = null;
     }
 
     // Disconnect provider

@@ -23,6 +23,20 @@ mrmd-monitor/src/tables/
   status.js
 ```
 
+## Current phase
+
+A first monitor-side bridge now exists for:
+- observing `tableJobs`
+- claiming runnable jobs
+- creating the first runtime + `r-dplyr` engine path with a local file-source provider
+- running subprocess materialization contracts directly when no custom executor is injected
+- reading csv/tsv caches back into rows for snapshot generation in the first host-backed path
+- rewriting linked-table markdown snapshots through Yjs anchors
+- marking jobs `claimed` / `running` / `writing` / `completed` / `error`
+- wiring the bridge into `RuntimeMonitor` itself so spawned monitors can process linked-table jobs
+
+The next step is to replace csv/tsv-first host plumbing with broader real filesystem/runtime support and richer diagnostics/status surfacing.
+
 ## First slice here
 
 Phase 1 monitor-side work should only prove:

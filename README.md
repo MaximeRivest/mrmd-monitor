@@ -70,7 +70,8 @@ mrmd-monitor/
 │   ├── monitor.js         # RuntimeMonitor class
 │   ├── execution.js       # Execution handling, MRP client
 │   ├── document.js        # Y.Text manipulation (output blocks)
-│   └── coordination.js    # Y.Map protocol for browser/monitor coordination
+│   ├── coordination.js    # Y.Map protocol for browser/monitor coordination
+│   └── tables/            # Linked-table job bridge / runner / snapshot rewrite
 ├── bin/
 │   └── cli.js             # CLI entry point
 ├── package.json
@@ -420,8 +421,8 @@ mrmd-monitor ws://localhost:4444
 # With options
 mrmd-monitor --doc notebook.md ws://localhost:4444
 
-# Monitor specific document
-mrmd-monitor --doc "projects/analysis.md" ws://localhost:4444
+# Monitor specific document with linked-table project context
+mrmd-monitor --doc "projects/analysis.md" --project-root /path/to/project ws://localhost:4444
 ```
 
 ### Options
@@ -429,6 +430,7 @@ mrmd-monitor --doc "projects/analysis.md" ws://localhost:4444
 | Option | Description |
 |--------|-------------|
 | `--doc <path>` | Document to monitor (default: all documents) |
+| `--project-root <dir>` | Project root for linked-table assets/materialization |
 | `--log-level <level>` | Log level: debug, info, warn, error |
 | `--name <name>` | Monitor name for Awareness |
 

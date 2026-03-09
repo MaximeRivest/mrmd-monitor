@@ -17,6 +17,7 @@ const args = process.argv.slice(2);
 
 const options = {
   doc: null,
+  projectRoot: null,
   logLevel: 'info',
   name: 'mrmd-monitor',
 };
@@ -35,6 +36,7 @@ Arguments:
 
 Options:
   --doc <path>          Document to monitor (default: first document)
+  --project-root <dir>  Project root for linked-table assets/materialization
   --name <name>         Monitor name for Awareness (default: mrmd-monitor)
   --log-level <level>   Log level: debug, info, warn, error (default: info)
   --help, -h            Show this help
@@ -46,8 +48,9 @@ Examples:
 
 The monitor connects to mrmd-sync as a Yjs peer and:
   - Watches for execution requests in Y.Map('executions')
-  - Claims and executes requests via MRP runtimes
-  - Writes output to Y.Text (the document)
+  - Watches linked-table jobs in Y.Map('tableJobs')
+  - Claims and executes requests via MRP runtimes / linked-table runtime
+  - Writes output and table snapshot rewrites through Yjs
   - Handles stdin requests from runtimes
 `);
 }
@@ -63,6 +66,12 @@ for (let i = 0; i < args.length; i++) {
     options.doc = args[++i];
     if (!options.doc) {
       console.error('Error: --doc requires a path');
+      process.exit(1);
+    }
+  } else if (arg === '--project-root') {
+    options.projectRoot = args[++i];
+    if (!options.projectRoot) {
+      console.error('Error: --project-root requires a path');
       process.exit(1);
     }
   } else if (arg === '--name') {
@@ -130,11 +139,13 @@ console.log('\x1b[36m%s\x1b[0m', '  mrmd-monitor');
 console.log('  ────────────');
 console.log(`  Sync:     ${syncUrl}`);
 console.log(`  Document: ${docPath}`);
+console.log(`  Project:  ${options.projectRoot || '(none)'}`);
 console.log(`  Name:     ${options.name}`);
 console.log('');
 
 const monitor = new RuntimeMonitor(syncUrl, docPath, {
   name: options.name,
+  projectRoot: options.projectRoot || undefined,
   log,
 });
 
