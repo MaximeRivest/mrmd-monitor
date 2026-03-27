@@ -1,5 +1,11 @@
 # mrmd-monitor
 
+> **Legacy standalone repo**
+> 
+> `mrmd-monitor` has been merged into [`mrmd`](../mrmd) and now lives inside the daemon as an in-process service.
+> New work should target `mrmd`.
+> This repo remains only for legacy reference and transition support.
+
 A headless Yjs peer that monitors and executes code in mrmd notebooks, ensuring long-running executions survive browser disconnects.
 
 ## Why This Exists
